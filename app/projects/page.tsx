@@ -49,7 +49,7 @@ export default function ProjectsPage() {
       {loading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
       ) : projects.length === 0 ? (
-        <p className="text-gray-500 text-sm">No projects yet. <Link href="/projects/new" className="text-blue-600 underline">Create one.</Link></p>
+        <p className="text-gray-500 text-sm">No projects yet.</p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {projects.map((project) => {

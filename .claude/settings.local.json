@@ -4,7 +4,17 @@
       "Bash(npm install *)",
       "Bash(npx prisma *)",
       "Bash(mkdir -p /Users/romanpefcik/dev/repos/parts_tracker/app/parts/new)",
-      "Bash(mkdir -p /Users/romanpefcik/dev/repos/parts_tracker/app/parts/\\\\[id\\\\])"
+      "Bash(mkdir -p /Users/romanpefcik/dev/repos/parts_tracker/app/parts/\\\\[id\\\\])",
+      "Bash(node -e ' *)",
+      "Bash(tail -200 /tmp/parts_dev.log 2>/dev/null | grep -B 2 -A 30 \"Failed to read\\\\|extractText\\\\|PDFParse\\\\|Error\\\\|throw\")",
+      "Read(//private/tmp/**)",
+      "Bash(find /Users/romanpefcik -maxdepth 3 -name \"*.pdf\" 2>/dev/null | head -5)",
+      "Read(//Users/romanpefcik/**)",
+      "Bash(pkill -f \"next-server\\\\|next dev\")",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000/api/parts)",
+      "Bash(kill -9 2560)",
+      "Bash(rm -f /Users/romanpefcik/.Trash/dev.db)"
     ]
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -22,27 +22,40 @@ function available(part: Part) {
 
 export default function PartsPage() {
   const router = useRouter();
-  const [parts, setParts] = useState<Part[]>([]);
+  const [allParts, setAllParts] = useState<Part[]>([]);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
   const [loading, setLoading] = useState(true);
 
   const fetchParts = useCallback(async () => {
     setLoading(true);
-    const params = new URLSearchParams();
-    if (search) params.set("search", search);
-    if (category) params.set("category", category);
-    const res = await fetch(`/api/parts?${params}`);
-    setParts(await res.json());
+    const res = await fetch(`/api/parts`);
+    setAllParts(await res.json());
     setLoading(false);
-  }, [search, category]);
+  }, []);
 
-  useEffect(() => {
-    const t = setTimeout(fetchParts, 300);
-    return () => clearTimeout(t);
-  }, [fetchParts]);
+  useEffect(() => { fetchParts(); }, [fetchParts]);
 
-  const categories = Array.from(new Set(parts.map((p) => p.category).filter(Boolean)));
+  // Categories derived from ALL parts so the dropdown stays stable when filtering
+  const categories = useMemo(
+    () => Array.from(new Set(allParts.map((p) => p.category).filter(Boolean) as string[])).sort(),
+    [allParts]
+  );
+
+  // Client-side filtering
+  const parts = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return allParts.filter((p) => {
+      if (category && p.category !== category) return false;
+      if (!q) return true;
+      return (
+        p.name.toLowerCase().includes(q) ||
+        (p.value?.toLowerCase().includes(q) ?? false) ||
+        (p.category?.toLowerCase().includes(q) ?? false) ||
+        (p.package?.toLowerCase().includes(q) ?? false)
+      );
+    });
+  }, [allParts, search, category]);
 
   async function deletePart(id: number) {
     if (!confirm("Delete this part?")) return;
@@ -91,7 +104,7 @@ export default function PartsPage() {
         >
           <option value="">All categories</option>
           {categories.map((c) => (
-            <option key={c} value={c!}>{c}</option>
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
       </div>
@@ -99,7 +112,7 @@ export default function PartsPage() {
       {loading ? (
         <p className="text-gray-500 text-sm">Loading…</p>
       ) : parts.length === 0 ? (
-        <p className="text-gray-500 text-sm">No parts found. <Link href="/parts/new" className="text-blue-600 underline">Add one.</Link></p>
+        <p className="text-gray-500 text-sm">No parts found.</p>
       ) : (
         <div className="bg-white rounded-xl shadow overflow-hidden">
           <table className="w-full text-sm">
