@@ -122,7 +122,7 @@ export default function ProjectDetailPage() {
   const pickableParts = allParts.filter((p) => !allocatedPartIds.has(p.id) && !queuedPartIds.has(p.id));
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="flex items-center gap-2 mb-5">
         <Link href="/projects" className="text-gray-400 hover:text-gray-600 text-sm">← Projects</Link>
         <span className="text-gray-300">/</span>
@@ -132,8 +132,11 @@ export default function ProjectDetailPage() {
         }`}>{project.status}</span>
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="lg:col-span-2 space-y-4">
+
       {/* Allocated parts */}
-      <div className="bg-white rounded-xl shadow p-5 mb-4">
+      <div className="bg-white rounded-xl shadow p-5">
         <h2 className="font-semibold text-gray-700 mb-3">Allocated Parts</h2>
         {project.allocations.length === 0 ? (
           <p className="text-sm text-gray-400">No parts allocated yet.</p>
@@ -207,7 +210,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* Queue + picker */}
-      <div className="bg-white rounded-xl shadow p-5 mb-4">
+      <div className="bg-white rounded-xl shadow p-5">
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-gray-700">Pending Allocations</h2>
           {queue.length > 0 && (
@@ -296,28 +299,33 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      {/* Edit project */}
-      <form onSubmit={saveProject} className="bg-white rounded-xl shadow p-5 space-y-3">
-        <h2 className="font-semibold text-gray-700 mb-1">Project Details</h2>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
-          <input required value={project.name} onChange={(e) => setProject({ ...project, name: e.target.value })} className={inputCls} />
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-          <textarea value={project.description ?? ""} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={2} className={inputCls} />
+
+        {/* Right column — Project details, sticky on large screens */}
+        <div className="lg:col-span-1 lg:sticky lg:top-4">
+          <form onSubmit={saveProject} className="bg-white rounded-xl shadow p-5 space-y-3">
+            <h2 className="font-semibold text-gray-700 mb-1">Project Details</h2>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+              <input required value={project.name} onChange={(e) => setProject({ ...project, name: e.target.value })} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+              <textarea value={project.description ?? ""} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={4} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select value={project.status} onChange={(e) => setProject({ ...project, status: e.target.value })} className={inputCls}>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <button type="submit" disabled={saving} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </form>
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-          <select value={project.status} onChange={(e) => setProject({ ...project, status: e.target.value })} className={inputCls}>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
-          </select>
-        </div>
-        <button type="submit" disabled={saving} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }
