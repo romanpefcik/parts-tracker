@@ -14,7 +14,8 @@
       "Bash(npm run *)",
       "Bash(curl -s http://localhost:3000/api/parts)",
       "Bash(kill -9 2560)",
-      "Bash(rm -f /Users/romanpefcik/.Trash/dev.db)"
+      "Bash(rm -f /Users/romanpefcik/.Trash/dev.db)",
+      "Bash(npx tsc *)"
     ]
   }
 }

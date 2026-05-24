@@ -14,6 +14,14 @@ type Project = {
   allocations: Allocation[];
 };
 
+type Box = {
+  id: number;
+  name: string;
+  description: string | null;
+  order: number;
+  schematic: { id: number } | null;
+};
+
 type QueueItem = {
   partId: number;
   partName: string;
@@ -31,6 +39,12 @@ export default function ProjectDetailPage() {
   const [allParts, setAllParts] = useState<Part[]>([]);
   const [saving, setSaving] = useState(false);
 
+  // Boxes
+  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [newBoxName, setNewBoxName] = useState("");
+  const [editingBoxId, setEditingBoxId] = useState<number | null>(null);
+  const [editBoxName, setEditBoxName] = useState("");
+
   // Queue + picker state
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [committing, setCommitting] = useState(false);
@@ -41,13 +55,46 @@ export default function ProjectDetailPage() {
   const [editNotes, setEditNotes] = useState("");
 
   async function load() {
-    const [projRes, partsRes] = await Promise.all([
+    const [projRes, partsRes, boxesRes] = await Promise.all([
       fetch(`/api/projects/${id}`),
       fetch("/api/parts"),
+      fetch(`/api/projects/${id}/boxes`),
     ]);
     if (!projRes.ok) { router.push("/projects"); return; }
     setProject(await projRes.json());
     setAllParts(await partsRes.json());
+    setBoxes(await boxesRes.json());
+  }
+
+  async function createBox(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newBoxName.trim();
+    if (!name) return;
+    await fetch(`/api/projects/${id}/boxes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setNewBoxName("");
+    load();
+  }
+
+  async function saveBoxName(boxId: number) {
+    const name = editBoxName.trim();
+    if (!name) return;
+    await fetch(`/api/projects/${id}/boxes/${boxId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setEditingBoxId(null);
+    load();
+  }
+
+  async function deleteBox(boxId: number) {
+    if (!confirm("Delete this box?")) return;
+    await fetch(`/api/projects/${id}/boxes/${boxId}`, { method: "DELETE" });
+    load();
   }
 
   useEffect(() => { load(); }, [id]);
@@ -134,6 +181,54 @@ export default function ProjectDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
         <div className="lg:col-span-2 space-y-4">
+
+      {/* Project boxes (sub-assemblies) */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="font-semibold text-gray-700 mb-3">Boxes</h2>
+        {boxes.length === 0 ? (
+          <p className="text-sm text-gray-400 mb-3">No boxes yet. Boxes are sub-assemblies of this project — each gets its own schematic.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 mb-3">
+            {boxes.map((b) => (
+              <li key={b.id} className="py-2 flex items-center gap-3">
+                {editingBoxId === b.id ? (
+                  <>
+                    <input
+                      value={editBoxName}
+                      onChange={(e) => setEditBoxName(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
+                      autoFocus
+                    />
+                    <button onClick={() => saveBoxName(b.id)} className="text-blue-500 text-xs hover:underline">save</button>
+                    <button onClick={() => setEditingBoxId(null)} className="text-gray-400 text-xs hover:underline">cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm text-gray-700 font-medium">{b.name}</span>
+                    <button
+                      onClick={() => { setEditingBoxId(b.id); setEditBoxName(b.name); }}
+                      className="text-blue-400 text-xs hover:underline"
+                    >rename</button>
+                    <button onClick={() => deleteBox(b.id)} className="text-red-400 text-xs hover:underline">delete</button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={createBox} className="flex gap-2">
+          <input
+            value={newBoxName}
+            onChange={(e) => setNewBoxName(e.target.value)}
+            placeholder="New box name…"
+            className={inputCls}
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
+          >Add box</button>
+        </form>
+      </div>
 
       {/* Allocated parts */}
       <div className="bg-white rounded-xl shadow p-5">
