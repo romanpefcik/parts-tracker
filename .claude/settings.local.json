@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install *)",
+      "Bash(npx prisma *)",
+      "Bash(mkdir -p /Users/romanpefcik/dev/repos/parts_tracker/app/parts/new)",
+      "Bash(mkdir -p /Users/romanpefcik/dev/repos/parts_tracker/app/parts/\\\\[id\\\\])"
+    ]
+  }
+}
