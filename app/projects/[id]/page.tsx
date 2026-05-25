@@ -14,6 +14,22 @@ type Project = {
   allocations: Allocation[];
 };
 
+type Box = {
+  id: number;
+  name: string;
+  description: string | null;
+  order: number;
+  schematic: { id: number } | null;
+};
+
+type QueueItem = {
+  partId: number;
+  partName: string;
+  partValue: string | null;
+  quantity: number;
+  notes: string;
+};
+
 const inputCls = "w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500";
 
 export default function ProjectDetailPage() {
@@ -23,11 +39,15 @@ export default function ProjectDetailPage() {
   const [allParts, setAllParts] = useState<Part[]>([]);
   const [saving, setSaving] = useState(false);
 
-  // Allocate form state
-  const [allocPartId, setAllocPartId] = useState("");
-  const [allocQty, setAllocQty] = useState(1);
-  const [allocNotes, setAllocNotes] = useState("");
-  const [allocating, setAllocating] = useState(false);
+  // Boxes
+  const [boxes, setBoxes] = useState<Box[]>([]);
+  const [newBoxName, setNewBoxName] = useState("");
+  const [editingBoxId, setEditingBoxId] = useState<number | null>(null);
+  const [editBoxName, setEditBoxName] = useState("");
+
+  // Queue + picker state
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [committing, setCommitting] = useState(false);
 
   // Edit allocation inline
   const [editingAllocId, setEditingAllocId] = useState<number | null>(null);
@@ -35,13 +55,46 @@ export default function ProjectDetailPage() {
   const [editNotes, setEditNotes] = useState("");
 
   async function load() {
-    const [projRes, partsRes] = await Promise.all([
+    const [projRes, partsRes, boxesRes] = await Promise.all([
       fetch(`/api/projects/${id}`),
       fetch("/api/parts"),
+      fetch(`/api/projects/${id}/boxes`),
     ]);
     if (!projRes.ok) { router.push("/projects"); return; }
     setProject(await projRes.json());
     setAllParts(await partsRes.json());
+    setBoxes(await boxesRes.json());
+  }
+
+  async function createBox(e: React.FormEvent) {
+    e.preventDefault();
+    const name = newBoxName.trim();
+    if (!name) return;
+    await fetch(`/api/projects/${id}/boxes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setNewBoxName("");
+    load();
+  }
+
+  async function saveBoxName(boxId: number) {
+    const name = editBoxName.trim();
+    if (!name) return;
+    await fetch(`/api/projects/${id}/boxes/${boxId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    setEditingBoxId(null);
+    load();
+  }
+
+  async function deleteBox(boxId: number) {
+    if (!confirm("Delete this box?")) return;
+    await fetch(`/api/projects/${id}/boxes/${boxId}`, { method: "DELETE" });
+    load();
   }
 
   useEffect(() => { load(); }, [id]);
@@ -58,19 +111,37 @@ export default function ProjectDetailPage() {
     setSaving(false);
   }
 
-  async function allocate(e: React.FormEvent) {
-    e.preventDefault();
-    if (!allocPartId) return;
-    setAllocating(true);
-    await fetch(`/api/projects/${id}/allocations`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ partId: Number(allocPartId), quantity: allocQty, notes: allocNotes || null }),
+  function addPartToQueue(partId: number) {
+    const part = allParts.find((p) => p.id === partId);
+    if (!part) return;
+    setQueue((prev) => {
+      if (prev.some((q) => q.partId === part.id)) return prev;
+      return [...prev, { partId: part.id, partName: part.name, partValue: part.value, quantity: 1, notes: "" }];
     });
-    setAllocPartId("");
-    setAllocQty(1);
-    setAllocNotes("");
-    setAllocating(false);
+  }
+
+  function updateQueueItem(partId: number, patch: Partial<QueueItem>) {
+    setQueue((prev) => prev.map((q) => (q.partId === partId ? { ...q, ...patch } : q)));
+  }
+
+  function removeFromQueue(partId: number) {
+    setQueue((prev) => prev.filter((q) => q.partId !== partId));
+  }
+
+  async function commitQueue() {
+    if (queue.length === 0) return;
+    setCommitting(true);
+    await Promise.all(
+      queue.map((q) =>
+        fetch(`/api/projects/${id}/allocations`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ partId: q.partId, quantity: q.quantity, notes: q.notes || null }),
+        })
+      )
+    );
+    setQueue([]);
+    setCommitting(false);
     load();
   }
 
@@ -92,18 +163,13 @@ export default function ProjectDetailPage() {
 
   if (!project) return <p className="text-gray-500 text-sm">Loading…</p>;
 
+  // Parts available to pick = not already allocated to this project AND not already in the queue
   const allocatedPartIds = new Set(project.allocations.map((a) => a.part.id));
-  const availableParts = allParts.filter((p) => !allocatedPartIds.has(p.id));
-
-  function getAvailable(part: Part) {
-    // Available = stock minus all allocations across ALL projects (from part.allocations in allParts)
-    // We only have part.quantity here; a more accurate figure requires the full allocations.
-    // The list API returns allocations, so we need the full part object
-    return part.quantity; // simplified; shows total stock on this view
-  }
+  const queuedPartIds = new Set(queue.map((q) => q.partId));
+  const pickableParts = allParts.filter((p) => !allocatedPartIds.has(p.id) && !queuedPartIds.has(p.id));
 
   return (
-    <div className="max-w-2xl">
+    <div>
       <div className="flex items-center gap-2 mb-5">
         <Link href="/projects" className="text-gray-400 hover:text-gray-600 text-sm">← Projects</Link>
         <span className="text-gray-300">/</span>
@@ -113,8 +179,59 @@ export default function ProjectDetailPage() {
         }`}>{project.status}</span>
       </div>
 
-      {/* Parts list */}
-      <div className="bg-white rounded-xl shadow p-5 mb-4">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 items-start">
+        <div className="lg:col-span-2 space-y-4">
+
+      {/* Project boxes (sub-assemblies) */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <h2 className="font-semibold text-gray-700 mb-3">Boxes</h2>
+        {boxes.length === 0 ? (
+          <p className="text-sm text-gray-400 mb-3">No boxes yet. Boxes are sub-assemblies of this project — each gets its own schematic.</p>
+        ) : (
+          <ul className="divide-y divide-gray-100 mb-3">
+            {boxes.map((b) => (
+              <li key={b.id} className="py-2 flex items-center gap-3">
+                {editingBoxId === b.id ? (
+                  <>
+                    <input
+                      value={editBoxName}
+                      onChange={(e) => setEditBoxName(e.target.value)}
+                      className="flex-1 border border-gray-300 rounded px-2 py-1 text-sm"
+                      autoFocus
+                    />
+                    <button onClick={() => saveBoxName(b.id)} className="text-blue-500 text-xs hover:underline">save</button>
+                    <button onClick={() => setEditingBoxId(null)} className="text-gray-400 text-xs hover:underline">cancel</button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 text-sm text-gray-700 font-medium">{b.name}</span>
+                    <button
+                      onClick={() => { setEditingBoxId(b.id); setEditBoxName(b.name); }}
+                      className="text-blue-400 text-xs hover:underline"
+                    >rename</button>
+                    <button onClick={() => deleteBox(b.id)} className="text-red-400 text-xs hover:underline">delete</button>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+        <form onSubmit={createBox} className="flex gap-2">
+          <input
+            value={newBoxName}
+            onChange={(e) => setNewBoxName(e.target.value)}
+            placeholder="New box name…"
+            className={inputCls}
+          />
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700"
+          >Add box</button>
+        </form>
+      </div>
+
+      {/* Allocated parts */}
+      <div className="bg-white rounded-xl shadow p-5">
         <h2 className="font-semibold text-gray-700 mb-3">Allocated Parts</h2>
         {project.allocations.length === 0 ? (
           <p className="text-sm text-gray-400">No parts allocated yet.</p>
@@ -185,66 +302,125 @@ export default function ProjectDetailPage() {
             </tbody>
           </table>
         )}
-
-        {/* Allocate form */}
-        <form onSubmit={allocate} className="mt-4 flex gap-2 flex-wrap">
-          <select
-            value={allocPartId}
-            onChange={(e) => setAllocPartId(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 min-w-40 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          >
-            <option value="">Select part to allocate…</option>
-            {availableParts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.name}{p.value ? ` (${p.value})` : ""} — {getAvailable(p)} in stock
-              </option>
-            ))}
-          </select>
-          <input
-            type="number"
-            min={1}
-            value={allocQty}
-            onChange={(e) => setAllocQty(Number(e.target.value))}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm w-20 text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <input
-            value={allocNotes}
-            onChange={(e) => setAllocNotes(e.target.value)}
-            placeholder="notes (optional)"
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm flex-1 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          <button
-            type="submit"
-            disabled={!allocPartId || allocating}
-            className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors"
-          >
-            Allocate
-          </button>
-        </form>
       </div>
 
-      {/* Edit project */}
-      <form onSubmit={saveProject} className="bg-white rounded-xl shadow p-5 space-y-3">
-        <h2 className="font-semibold text-gray-700 mb-1">Project Details</h2>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
-          <input required value={project.name} onChange={(e) => setProject({ ...project, name: e.target.value })} className={inputCls} />
+      {/* Queue + picker */}
+      <div className="bg-white rounded-xl shadow p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-gray-700">Pending Allocations</h2>
+          {queue.length > 0 && (
+            <span className="text-xs text-gray-400">{queue.length} part{queue.length !== 1 ? "s" : ""} queued</span>
+          )}
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
-          <textarea value={project.description ?? ""} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={2} className={inputCls} />
+
+        {queue.length === 0 ? (
+          <p className="text-sm text-gray-400 mb-3">Pick parts below to queue them, then allocate all at once.</p>
+        ) : (
+          <table className="w-full text-sm mb-4">
+            <thead className="text-xs uppercase text-gray-400">
+              <tr>
+                <th className="text-left pb-2">Part</th>
+                <th className="text-right pb-2">Qty</th>
+                <th className="text-left pb-2 pl-3">Notes</th>
+                <th className="pb-2"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-50">
+              {queue.map((q) => (
+                <tr key={q.partId} className="bg-blue-50/40">
+                  <td className="py-2 font-medium text-gray-700">
+                    {q.partName}
+                    {q.partValue && <span className="text-gray-400 ml-1 text-xs">{q.partValue}</span>}
+                  </td>
+                  <td className="py-2 text-right">
+                    <input
+                      type="number"
+                      min={1}
+                      value={q.quantity}
+                      onChange={(e) => updateQueueItem(q.partId, { quantity: Number(e.target.value) })}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm w-20 text-right"
+                    />
+                  </td>
+                  <td className="py-2 pl-3">
+                    <input
+                      value={q.notes}
+                      onChange={(e) => updateQueueItem(q.partId, { notes: e.target.value })}
+                      className="border border-gray-300 rounded px-2 py-1 text-sm w-full"
+                      placeholder="notes…"
+                    />
+                  </td>
+                  <td className="py-2 text-right">
+                    <button onClick={() => removeFromQueue(q.partId)} className="text-red-400 text-xs hover:underline">remove</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        {/* Picker — selecting a part adds it to the queue immediately */}
+        <select
+          value=""
+          onChange={(e) => {
+            if (e.target.value) addPartToQueue(Number(e.target.value));
+          }}
+          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+        >
+          <option value="">Pick a part to add to the queue…</option>
+          {pickableParts.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}{p.value ? ` (${p.value})` : ""} — {p.quantity} in stock
+            </option>
+          ))}
+        </select>
+
+        {queue.length > 0 && (
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              onClick={commitQueue}
+              disabled={committing}
+              className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-40 transition-colors"
+            >
+              {committing ? "Allocating…" : `Allocate ${queue.length} part${queue.length !== 1 ? "s" : ""}`}
+            </button>
+            <button
+              onClick={() => setQueue([])}
+              disabled={committing}
+              className="text-sm text-gray-500 hover:text-gray-700 hover:underline"
+            >
+              Clear queue
+            </button>
+          </div>
+        )}
+      </div>
+
         </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
-          <select value={project.status} onChange={(e) => setProject({ ...project, status: e.target.value })} className={inputCls}>
-            <option value="active">Active</option>
-            <option value="archived">Archived</option>
-          </select>
+
+        {/* Right column — Project details, sticky on large screens */}
+        <div className="lg:col-span-1 lg:sticky lg:top-4">
+          <form onSubmit={saveProject} className="bg-white rounded-xl shadow p-5 space-y-3">
+            <h2 className="font-semibold text-gray-700 mb-1">Project Details</h2>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Name *</label>
+              <input required value={project.name} onChange={(e) => setProject({ ...project, name: e.target.value })} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Description</label>
+              <textarea value={project.description ?? ""} onChange={(e) => setProject({ ...project, description: e.target.value })} rows={4} className={inputCls} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+              <select value={project.status} onChange={(e) => setProject({ ...project, status: e.target.value })} className={inputCls}>
+                <option value="active">Active</option>
+                <option value="archived">Archived</option>
+              </select>
+            </div>
+            <button type="submit" disabled={saving} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "Saving…" : "Save Changes"}
+            </button>
+          </form>
         </div>
-        <button type="submit" disabled={saving} className="bg-blue-600 text-white px-5 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors">
-          {saving ? "Saving…" : "Save Changes"}
-        </button>
-      </form>
+      </div>
     </div>
   );
 }

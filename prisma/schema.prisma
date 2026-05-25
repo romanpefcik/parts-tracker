@@ -32,6 +32,38 @@ model Project {
   status      String   @default("active")
 
   allocations Allocation[]
+  boxes       ProjectBox[]
+  schematic   Schematic?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProjectBox {
+  id          Int     @id @default(autoincrement())
+  name        String
+  description String?
+  order       Int     @default(0)
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId Int
+
+  schematic Schematic?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Schematic {
+  id   Int    @id @default(autoincrement())
+  name String
+  data String @default("{\"nodes\":[],\"edges\":[]}")
+
+  project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  projectId Int?     @unique
+
+  box   ProjectBox? @relation(fields: [boxId], references: [id], onDelete: Cascade)
+  boxId Int?        @unique
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
